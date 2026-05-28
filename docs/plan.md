@@ -31,3 +31,6 @@
 - Production deployment refinement
 
 **Current Milestone**: Complete Phase 1 + basic Task Interface in admin-agent-GUI.
+
+---
+**Note**: This file is human-only. Agents/Grok must not edit it.

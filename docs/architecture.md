@@ -27,3 +27,6 @@ To be implemented in admin-agent-GUI: vector embeddings + graph for long-term ag
 
 ## Deployment
 Initial: Two separate apps on Hostinger VPS, same DB. Later: Turborepo monorepo if needed.
+
+---
+**Note**: This file is human-only. Agents/Grok must not edit it.

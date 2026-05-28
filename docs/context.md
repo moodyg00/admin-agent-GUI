@@ -25,3 +25,6 @@ The admin-agent-GUI is not a simple dashboard — it is a full agentic operating
 - Initial deployment: separate apps on Hostinger, shared DB
 - coss ui preferred; shadcn allowed with explanation if it clearly improves UI
 - All agent actions auditable and approvable
+
+---
+**Note**: This file is human-only. Agents/Grok must not edit it.

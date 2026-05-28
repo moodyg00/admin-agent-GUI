@@ -25,3 +25,6 @@ pnpm dlx skills add cosscom/coss (or follow current coss registry)
 Grok should default to coss. Any use of shadcn must be justified in the commit/PR description. No unexplained deviations allowed.
 
 **Reference**: Full coss skill loaded automatically when working on UI tasks.
+
+---
+**Note**: This file is human-only. Agents/Grok must not edit it.
