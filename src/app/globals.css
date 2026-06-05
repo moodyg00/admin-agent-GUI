@@ -76,7 +76,11 @@ a {
   gap: 6px;
   overflow-x: auto;
   padding: 2px 0;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+}
+
+.repo-header__nav::-webkit-scrollbar {
+  display: none;
 }
 
 .repo-header__link {
