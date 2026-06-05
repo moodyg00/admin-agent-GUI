@@ -1,0 +1,36 @@
+[submodule "vendor/openmontage"]
+	path = vendor/openmontage
+	url = https://github.com/calesthio/OpenMontage
+[submodule "vendor/rrweb"]
+	path = vendor/rrweb
+	url = https://github.com/rrweb-io/rrweb
+[submodule "vendor/suna"]
+	path = vendor/suna
+	url = https://github.com/kortix-ai/suna
+[submodule "vendor/invokeai"]
+	path = vendor/invokeai
+	url = https://github.com/invoke-ai/InvokeAI
+[submodule "vendor/remix"]
+	path = vendor/remix
+	url = https://github.com/remix-run/remix
+[submodule "vendor/business-leads-ai-automation"]
+	path = vendor/business-leads-ai-automation
+	url = https://github.com/asiifdev/business-leads-ai-automation
+[submodule "vendor/mobile-mcp"]
+	path = vendor/mobile-mcp
+	url = https://github.com/mobile-next/mobile-mcp
+[submodule "vendor/browseros"]
+	path = vendor/browseros
+	url = https://github.com/browseros-ai/BrowserOS
+[submodule "vendor/immich"]
+	path = vendor/immich
+	url = https://github.com/immich-app/immich
+[submodule "vendor/chibisafe"]
+	path = vendor/chibisafe
+	url = https://github.com/chibisafe/chibisafe
+[submodule "vendor/ui-tars"]
+	path = vendor/ui-tars
+	url = https://github.com/bytedance/UI-TARS
+[submodule "vendor/firecrawl"]
+	path = vendor/firecrawl
+	url = https://github.com/firecrawl/firecrawl
