@@ -1,0 +1,28 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model StoredCredential {
+  id        String   @id @default(cuid())
+  domain    String   @unique
+  encrypted String   // AES-256-GCM encrypted payload (salt:iv:tag:data)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SessionState {
+  id        String   @id @default(cuid())
+  domain    String   @unique
+  state     Json     // Playwright storageState
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
