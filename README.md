@@ -1,3 +1,5 @@
+# Current application only has one tool that has been designed at all, that is the visual browser. This is not the core of this backend site, just one tool of many, below is the information on that build and hopefully a helpful starting point. 
+
 # Visual Browser Agent Foundation (clean base)
 
 This is the minimal, clean foundation for a **visual-first, human-style browser navigation and operation** system.
