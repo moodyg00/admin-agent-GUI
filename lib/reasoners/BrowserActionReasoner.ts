@@ -2,7 +2,7 @@
  * BrowserActionReasoner
  *
  * The first concrete "prompt agent" / low-token specialist reasoner.
- * Extracted and cleaned from the original askModelForAction in RealBrowserOperator.
+ * The core prompt agent for deciding browser actions using screenshot + cheap DOM data.
  *
  * Responsibilities (narrow):
  * - Given cheap obs (+ optional fresh screenshot), current step, task, and skills,
@@ -82,7 +82,7 @@ Core rules:
 - **Secure / login flows with stored credentials (critical):** You output high-level markers such as "use stored credentials for the current domain" or "perform secure login for the current domain using stored credentials". The execution layer will try to inject real values from the secure store (DB) and will always report the result in an observation.
   - If you see ANY observation containing "no credentials in store" or "Secure marker ... could not be resolved - no credentials in store", this is TERMINAL: there are no saved credentials for the domain that appeared in the obs (e.g. accounts.google.com).
   - You MUST IMMEDIATELY stop the login sequence. The very next JSON you output (this turn) MUST be action:"done" with a final_answer. Do not output type, click, or recommend anything else. Do not wait for more steps or noProgress.
-  - The final_answer must be the exact helpful message: "I reached the [site] login form but the secure store has no credentials saved for [exact-domain-from-obs]. Please open the Secure Logins section in TARS, fill Domain + Username + Password for '[exact-domain]', click 'Save for domain', then re-run this exact task."
+  - The final_answer must be the exact helpful message: "I reached the [site] login form but the secure store has no credentials saved for [exact-domain-from-obs]. Please open the Secure Logins section, fill Domain + Username + Password for '[exact-domain]', click 'Save for domain', then re-run this exact task."
   - Example final_answer for this case: "I reached the Google login form but the secure store has no credentials saved for accounts.google.com. Please open the Secure Logins section, fill Domain + Username + Password for 'accounts.google.com', click 'Save for domain', then re-run this exact task."
 - **Loop prevention (critical):** The noProgressCount tells you how many consecutive steps had no observable page change. If >= 2, do not repeat the previous action. Switch to 'extract' to gather, then immediately to "done" with final_answer once the data (or auth limitation) is clear from the observation. Repeating is a mistake.
 - Output ONLY the minified JSON action. Nothing else outside the object.

@@ -1,6 +1,6 @@
 /**
  * Minimal shared xAI client helper for prompt-based reasoners ("prompt agents").
- * Keeps the same patterns the original RealBrowserOperator used:
+ * Thin client for structured calls to xAI (used by the visual browser reasoner):
  *   - /v1/chat/completions
  *   - strict json_schema response_format
  *   - explicit reasoning_effort / temperature / top_p / max_output_tokens on EVERY call

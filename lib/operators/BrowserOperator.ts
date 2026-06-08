@@ -46,30 +46,28 @@ function loadSkills(skillDir = 'skills/browser') {
 }
 
 export interface BrowserConfig {
-  apiKey: string;
-  model?: string; // Will auto-load from configs/browser.config.json if not provided (or leave blank)
+  model?: string;
   viewport?: { width: number; height: number };
-  // Secure credential handling
-  securePassphrase?: string; // For decrypting stored credentials (from UI or env)
-  domainCredentials?: Record<string, { username: string; password: string }>; // Optional direct (less secure, for testing)
+  securePassphrase?: string;
+  domainCredentials?: Record<string, { username: string; password: string }>;
 }
 
-function loadModelFromTarsConfig(): string | undefined {
+function loadConfig(): { model?: string } {
   try {
     const configPath = path.join(process.cwd(), 'configs', 'browser.config.json');
     if (fs.existsSync(configPath)) {
       const raw = fs.readFileSync(configPath, 'utf8');
       const cfg = JSON.parse(raw);
-      const id = cfg?.model?.id;
-      if (id) {
-        console.log(`[BrowserOperator] Loaded model id from configs/browser.config.json: ${id}`);
-        return id;
+      const model = cfg?.model?.id;
+      if (model) {
+        console.log(`[BrowserOperator] Loaded model config from configs/browser.config.json`);
+        return { model };
       }
     }
   } catch (e) {
-    console.warn('[BrowserOperator] Could not load model from browser.config.json', e);
+    console.warn('[BrowserOperator] Could not load config from browser.config.json', e);
   }
-  return undefined;
+  return {};
 }
 
 /**
@@ -105,7 +103,7 @@ export class BrowserOperator implements Operator {
   private page: Page | null = null;
   private listeners: Array<(e: AgentEvent) => void> = [];
   private events: AgentEvent[] = [];
-  private view: ViewState = { kind: 'browser', status: 'idle', title: 'Real Browser' };
+  private view: ViewState = { kind: 'browser', status: 'idle', title: 'Visual Browser' };
   private running = false;
   private abortController: AbortController | null = null;
 
@@ -126,6 +124,10 @@ export class BrowserOperator implements Operator {
   connectInfo: { model: string };
 
   private config: BrowserConfig;
+
+  // API key is loaded strictly from environment (XAI_API_KEY preferred).
+  // Never from config file for security (keys shared across multiple agents/workflows).
+  private apiKey?: string;
 
   // User tweaks override the operator's context-aware "proper" defaults
   private inferenceOverrides: Record<string, any> = {};
@@ -154,9 +156,13 @@ export class BrowserOperator implements Operator {
   }
 
   constructor(config: BrowserConfig) {
-    const loadedModel = config.model || loadModelFromTarsConfig() || 'grok-4.3'; 
-    // grok-4.3 is the recommended current model (per xaiDocs.md image understanding examples and your available models list) 
-    // for sending screenshots + deciding GUI actions in the real browser agent.
+    const loaded = loadConfig();
+    const loadedModel = config.model || loaded.model || 'grok-4.3';
+
+    // API key comes ONLY from environment for security (shared across agents/workflows).
+    // Put XAI_API_KEY=... in .env.local (never commit).
+    // The config file holds only non-secret model settings.
+    const effectiveApiKey = process.env.XAI_API_KEY || process.env.OPENAI_API_KEY;
 
     this.config = {
       viewport: { width: 1280, height: 800 },
@@ -165,19 +171,23 @@ export class BrowserOperator implements Operator {
     };
     this.connectInfo = { model: this.config.model! };
 
+    // API key strictly from environment (XAI_API_KEY preferred).
+    // Never read from config file (keys belong in .env.local for all agents/workflows).
+    this.apiKey = process.env.XAI_API_KEY || process.env.OPENAI_API_KEY;
+
     // Initialize secure store. Credentials are NEVER sent to xAI in prompts.
     // They are injected ONLY at Playwright execution time on the server.
-    // Passphrase no longer required from UI; server uses default (or SECURE_PASSPHRASE env).
     this.secureStore = getSecureStore();
 
     // Seed direct credentials if provided (for convenience in dev; prefer encrypted store)
-    // Note: now async, will be awaited in runTask
     this._pendingCredentials = config.domainCredentials || {};
 
     // Instantiate the primary low-level prompt agent (BrowserActionReasoner).
-    // It owns the focused system + schema + xAI call. Raw responses are emitted as observations for the EventStream.
-    if (this.config.apiKey) {
-      this.initReasoners(this.config.apiKey, this.config.model);
+    // It owns the focused system + schema + xAI call.
+    if (this.apiKey) {
+      this.initReasoners(this.apiKey, this.config.model);
+    } else {
+      console.warn('[BrowserOperator] No xAI API key provided via XAI_API_KEY (or OPENAI_API_KEY) env. Operator will not be able to call the model. Add it to .env.local');
     }
   }
 
@@ -208,8 +218,8 @@ export class BrowserOperator implements Operator {
 
   async runTask(prompt: string): Promise<void> {
     if (this.running) this.stop();
-    if (!this.config.apiKey) {
-      this.emit(makeEvent('error', 'No xAI API key configured.'));
+    if (!this.apiKey) {
+      this.emit(makeEvent('error', 'No xAI API key configured. Set XAI_API_KEY in .env.local'));
       return;
     }
     if (!prompt.trim()) {
@@ -831,22 +841,13 @@ let _instance: BrowserOperator | null = null;
 
 export function getBrowserOperator(config?: BrowserConfig): BrowserOperator {
   if (!_instance) {
-    if (!config?.apiKey) {
-      // Will fail on first run if no key — the UI must provide it
-      _instance = new BrowserOperator({ apiKey: '' });
-    } else {
-      _instance = new BrowserOperator(config);
-    }
-  } else if (config?.apiKey) {
-    // allow updating the key
-    (_instance as any).config.apiKey = config.apiKey;
+    _instance = new BrowserOperator(config || {});
+  } else if (config?.model) {
     if (config.model) (_instance as any).config.model = config.model;
 
-    // Re-initialize reasoners if the instance was pre-created without a key
-    // (e.g. by status polling on page load calling getBrowserOperator() with no config).
-    // This ensures the customized agent (reasoner) gets created when the UI finally provides the key.
-    if (!( _instance as any ).actionReasoner) {
-      (_instance as any).initReasoners(config.apiKey, (_instance as any).config.model);
+    const effectiveApiKey = process.env.XAI_API_KEY || process.env.OPENAI_API_KEY;
+    if (!( _instance as any ).actionReasoner && effectiveApiKey) {
+      (_instance as any).initReasoners(effectiveApiKey, (_instance as any).config.model);
     }
   }
   return _instance;

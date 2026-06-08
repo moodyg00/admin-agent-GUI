@@ -42,7 +42,7 @@ Copy the `input[type=...][name=...]` part as the selector value.
 Rules:
 - `"recommend_specialist": "login"` must be a real property in the JSON (thoughts mentioning it are ignored by the driver).
 - Never emit final_answer on type or click.
-- If ANY obs contains "no credentials in store" (or "Secure marker ... could not be resolved"), the *next* output must be action:"done" (no more type/click) + final_answer exactly like: "I reached the login form but the secure store has no credentials saved for [exact-domain-from-obs, e.g. accounts.google.com]. Please open the Secure Logins section in TARS, fill Domain + Username + Password for '[exact-domain]', click 'Save for domain', then re-run this exact task." Do not loop.
+- If ANY obs contains "no credentials in store" (or "Secure marker ... could not be resolved"), the *next* output must be action:"done" (no more type/click) + final_answer exactly like: "I reached the login form but the secure store has no credentials saved for [exact-domain-from-obs, e.g. accounts.google.com]. Please open the Secure Logins section, fill Domain + Username + Password for '[exact-domain]', click 'Save for domain', then re-run this exact task." Do not loop.
 - Use [filled] + the CSS strings from obs to advance the sequence without repeating fills on the same field.
 
 The driver injects the stored values server-side only on the marker. This is the clean required flow.

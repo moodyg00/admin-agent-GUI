@@ -58,7 +58,7 @@ export interface LoginStrategy {
 // Executive / planner output. Emitted as 'plan' events so UI + humans can see/approve.
 export interface PlanStep {
   step: number;
-  operatorId: string;   // e.g. 'real-browser-tars', 'firecrawl', 'creation-video'
+  operatorId: string;   // e.g. 'browser-operator', 'firecrawl', 'creation-video'
   subPrompt: string;    // the focused sub-task to hand to the leaf operator
   successCriteria?: string;
   dependsOn?: number[];

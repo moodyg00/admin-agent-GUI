@@ -30,8 +30,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files (commit only the example; keep real secrets out)
+.env
+.env.local
+.env.*.local
+!.env.example
 
 # vercel
 .vercel
@@ -40,11 +43,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# TARS / agent configs with keys (keep the .example)
-configs/tars.config.json
-configs/tars.config.local.*
+# Browser operator config (non-secret model settings only — commit the .example)
+# Put real XAI_API_KEY (and other keys for agents/workflows) in .env.local
+configs/browser.config.json
+configs/browser.config.local.*
 *.config.local.*
-.env*
 
 
 /lib/generated/prisma

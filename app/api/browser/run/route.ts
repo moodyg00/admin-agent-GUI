@@ -10,17 +10,13 @@ import { getBrowserOperator } from '@/lib/operators/BrowserOperator';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { task, apiKey, model, inferenceOverrides, domainCredentials } = body;
+    const { task, model, inferenceOverrides, domainCredentials } = body;
 
     if (!task || typeof task !== 'string') {
       return NextResponse.json({ error: 'task is required' }, { status: 400 });
     }
-    if (!apiKey) {
-      return NextResponse.json({ error: 'apiKey (xAI) is required for real execution' }, { status: 400 });
-    }
 
     const op = getBrowserOperator({ 
-      apiKey, 
       model, 
       domainCredentials 
     });

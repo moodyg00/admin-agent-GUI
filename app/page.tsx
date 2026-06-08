@@ -140,10 +140,10 @@ export default function AdminAgentGUI() {
               {activeId === 'memory' && <div className="p-8 text-sm text-zinc-500">Agent Memory — Tencent model (placeholder)</div>}
               {activeId === 'agents' && <div className="p-8 text-sm text-zinc-500">Under construction</div>}
               {activeId === 'workflows' && <div className="p-8 text-sm text-zinc-500">Visual workflow editor — Flowise blueprint (to be implemented)</div>}
-              {activeId === 'photos' && <div className="p-8 text-sm text-zinc-500">Photos (placeholder)</div>}
+              {activeId === 'photos' && <PhotosPanel />}
               {activeId === 'documents' && <div className="p-8 text-sm text-zinc-500">Documents — PDF tools (placeholder)</div>}
               {activeId === 'analytics' && <div className="p-8 text-sm text-zinc-500">We will use Umami as a blueprint to build a custom analytics page.</div>}
-              {activeId === 'mobile' && <div className="p-8 text-sm text-zinc-500">Mobile Emulate (placeholder)</div>}
+              {activeId === 'mobile' && <MobileWorkspace />}
               {activeId === 'website' && <div className="p-8 text-sm text-zinc-500">Under construction</div>}
             </motion.div>
           </AnimatePresence>
@@ -184,7 +184,7 @@ export default function AdminAgentGUI() {
 
 function VisualBrowserWorkspace() {
   const [task, setTask] = useState("go to google.com and login then take a screenshot of the homepage");
-  const [apiKey, setApiKey] = usePersistedState<string>('aa-browser-xai-key', '');
+
   const [model, setModel] = usePersistedState<string>('aa-browser-model', '');
 
   const [inferenceOverrides, setInferenceOverrides] = useState<Record<string, any>>({});
@@ -195,8 +195,7 @@ function VisualBrowserWorkspace() {
   const [captured, setCaptured] = useState<Array<{ts: number; dataUrl: string; label: string}>>([]);
   const [finalAnswer, setFinalAnswer] = useState<string | null>(null);
 
-  const hasKey = !!apiKey.trim();
-  const isConnected = hasKey;
+  const isConnected = true; // key loaded from config/env, no UI input needed
 
   useEffect(() => {
     if (model === 'grok-2-vision-1212' || model === 'grok-2') {
@@ -230,7 +229,6 @@ function VisualBrowserWorkspace() {
 
   const startOperator = async () => {
     if (!task.trim()) { toast.error('Enter a task'); return; }
-    if (!hasKey) { toast.error('Set your xAI API key first'); return; }
 
     setEvents([]);
     setCaptured([]);
@@ -243,7 +241,6 @@ function VisualBrowserWorkspace() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ 
           task, 
-          apiKey, 
           model: model || undefined,
           inferenceOverrides: Object.keys(inferenceOverrides).length ? inferenceOverrides : undefined
         }),
@@ -265,11 +262,6 @@ function VisualBrowserWorkspace() {
     } catch {}
     setRunning(false);
     toast.info('Stop requested');
-  };
-
-  const clearKey = () => {
-    setApiKey('');
-    toast('Key cleared');
   };
 
   // Secure credentials save (DB wiring)
@@ -296,33 +288,6 @@ function VisualBrowserWorkspace() {
 
   return (
     <div className="space-y-4 h-full overflow-auto p-4">
-      {!hasKey && (
-        <div className="card p-4 border border-amber-500/30 bg-amber-500/5">
-          <div className="font-medium mb-2">Connect xAI for visual browser operator</div>
-          <div className="text-sm text-zinc-400 mb-3">
-            Paste your xAI key. The operator uses screenshots (visual understanding of interactables first) + cheap DOM data for the model.
-          </div>
-          <div className="flex gap-2">
-            <input
-              type="password"
-              value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
-              placeholder="xai-..."
-              className="input flex-1 font-mono text-sm"
-            />
-            <input
-              value={model}
-              onChange={e => setModel(e.target.value)}
-              className="input w-56 text-xs"
-              placeholder="grok-4.3 (default)"
-            />
-            <button onClick={() => { if (apiKey.trim()) { /* key saved in state */ toast.success('Key ready'); } }} className="btn btn-primary">Enable</button>
-          </div>
-          <div className="text-[10px] text-amber-400 mt-1">Key local only. Model from configs/browser.config.json or override.</div>
-          <button onClick={clearKey} className="text-[10px] text-zinc-500 underline mt-1">clear key</button>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <div className="lg:col-span-3 flex flex-col gap-3">
           <LiveBrowserView view={view} title="LIVE VISUAL BROWSER — Screenshot-first + DOM" />
@@ -337,14 +302,13 @@ function VisualBrowserWorkspace() {
                 placeholder="Task, e.g. go to google.com and login then take a screenshot of the homepage"
                 disabled={running}
               />
-              <button onClick={startOperator} disabled={running || !hasKey} className="btn btn-primary">
+              <button onClick={startOperator} disabled={running} className="btn btn-primary">
                 {running ? <RefreshCw className="animate-spin" size={15} /> : <Play size={15} />} Run
               </button>
               {running && <button onClick={stopOperator} className="btn btn-ghost"><Square size={15} /> Stop</button>}
             </div>
             <div className="text-[10px] text-emerald-400 mt-2">
-              Visual-first: screenshot for page understanding + cheap data to reasoner. Exact prompt sent.
-              {hasKey && <button onClick={clearKey} className="ml-2 text-[10px] text-zinc-500 underline">clear key</button>}
+              Visual-first: screenshot for page understanding + cheap data to reasoner. Exact prompt sent. Key from config/env.
             </div>
 
             <div className="mt-3 border-t border-white/10 pt-3">
@@ -393,6 +357,40 @@ function VisualBrowserWorkspace() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Restored previous implementation for photos (self-hosted photo library style)
+function PhotosPanel() {
+  return (
+    <div className="p-4 h-full overflow-auto">
+      <div className="uppercase text-xs tracking-widest text-zinc-400 mb-2">PHOTOS — Self-hosted Photo/Video Library</div>
+      <div className="text-sm mb-4">Using Immich as blueprint (Docker + Postgres + Redis + ML). Full Google Photos alternative.</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {[1,2,3,4,5,6,7,8].map(i => (
+          <div key={i} className="aspect-square bg-zinc-800 rounded overflow-hidden border border-white/10">
+            <div className="h-full flex items-center justify-center text-[10px] text-zinc-500">Photo {i}</div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 text-[10px] text-zinc-500">Upload, search, albums, sharing. Real install via their docker-compose.</div>
+    </div>
+  );
+}
+
+// Restored previous implementation for mobile (MCP control)
+function MobileWorkspace() {
+  return (
+    <div className="p-4 h-full overflow-auto">
+      <div className="uppercase text-xs tracking-widest text-zinc-400 mb-2">MOBILE EMULATE — Control real iOS/Android</div>
+      <div className="text-sm mb-4">mobile-mcp: MCP server for simulators/devices. Use with Cursor/Claude Desktop etc.</div>
+      <div className="card p-3 text-xs">
+        <div>Prerequisites: Xcode cmdline (iOS), Android platform tools.</div>
+        <div className="mt-2 font-mono">npx -y @mobilenext/mobile-mcp@latest</div>
+        <div className="mt-1">Or SSE: npx @mobilenext/mobile-mcp@latest --listen 3000</div>
+      </div>
+      <div className="mt-4 text-[10px] text-zinc-500">Connect your agent to control the device. See wiki for setup per OS.</div>
     </div>
   );
 }

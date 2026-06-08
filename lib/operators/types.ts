@@ -1,6 +1,6 @@
 /**
  * Shared Operator + View primitives for deep integration (no iframes).
- * These power the reusable LiveBrowserView + EventStream across TARS, Mobile, Firecrawl, Video workspaces etc.
+ * These power the reusable LiveBrowserView + EventStream for the visual browser and other workspaces.
  */
 
 export type EventType = 'thought' | 'action' | 'observation' | 'error' | 'screenshot' | 'plan' | 'result';

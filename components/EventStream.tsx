@@ -78,7 +78,7 @@ export function EventStream({ events, running, className = '', maxHeight = '100%
       </div>
 
       <div className="text-[10px] text-zinc-500 px-3 py-1.5 border-t border-white/10 bg-black/20">
-        {events.length} events • powered by operator primitives (reusable across TARS / Mobile / Firecrawl / video agents)
+        {events.length} events • powered by the visual browser operator primitives
       </div>
     </div>
   );

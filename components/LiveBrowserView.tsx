@@ -12,7 +12,7 @@ interface LiveBrowserViewProps {
 }
 
 /**
- * LiveBrowserView — the reusable "live view" the user liked for TARS.
+ * LiveBrowserView — reusable live screenshot view for the visual browser operator.
  * Renders a desktop / browser / app frame with:
  * - Top chrome (title, url, LIVE badge)
  * - Inner content area that reflects current ViewState (mock UIs + text + screenshot if present)
