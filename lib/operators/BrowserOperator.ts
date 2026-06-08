@@ -46,6 +46,7 @@ function loadSkills(skillDir = 'skills/browser') {
 }
 
 export interface BrowserConfig {
+  apiKey?: string;  // optional, passed from UI persisted storage as fallback (key primarily from env)
   model?: string;
   viewport?: { width: number; height: number };
   securePassphrase?: string;
@@ -159,10 +160,11 @@ export class BrowserOperator implements Operator {
     const loaded = loadConfig();
     const loadedModel = config.model || loaded.model || 'grok-4.3';
 
-    // API key comes ONLY from environment for security (shared across agents/workflows).
-    // Put XAI_API_KEY=... in .env.local (never commit).
-    // The config file holds only non-secret model settings.
-    const effectiveApiKey = process.env.XAI_API_KEY || process.env.OPENAI_API_KEY;
+    // API key priority:
+    // 1. Passed from caller (e.g. persisted in UI localStorage for convenience, no visible input)
+    // 2. Environment (XAI_API_KEY in .env.local — recommended for all agents/workflows)
+    // Never read the secret from the (committed) config file.
+    const effectiveApiKey = config.apiKey || process.env.XAI_API_KEY || process.env.OPENAI_API_KEY;
 
     this.config = {
       viewport: { width: 1280, height: 800 },
@@ -171,9 +173,7 @@ export class BrowserOperator implements Operator {
     };
     this.connectInfo = { model: this.config.model! };
 
-    // API key strictly from environment (XAI_API_KEY preferred).
-    // Never read from config file (keys belong in .env.local for all agents/workflows).
-    this.apiKey = process.env.XAI_API_KEY || process.env.OPENAI_API_KEY;
+    this.apiKey = effectiveApiKey;
 
     // Initialize secure store. Credentials are NEVER sent to xAI in prompts.
     // They are injected ONLY at Playwright execution time on the server.
@@ -187,7 +187,7 @@ export class BrowserOperator implements Operator {
     if (this.apiKey) {
       this.initReasoners(this.apiKey, this.config.model);
     } else {
-      console.warn('[BrowserOperator] No xAI API key provided via XAI_API_KEY (or OPENAI_API_KEY) env. Operator will not be able to call the model. Add it to .env.local');
+      console.warn('[BrowserOperator] No xAI API key provided (via caller or XAI_API_KEY env). Operator will not be able to call the model.');
     }
   }
 
@@ -218,10 +218,6 @@ export class BrowserOperator implements Operator {
 
   async runTask(prompt: string): Promise<void> {
     if (this.running) this.stop();
-    if (!this.apiKey) {
-      this.emit(makeEvent('error', 'No xAI API key configured. Set XAI_API_KEY in .env.local'));
-      return;
-    }
     if (!prompt.trim()) {
       this.emit(makeEvent('error', 'Empty task.'));
       return;
@@ -239,6 +235,10 @@ export class BrowserOperator implements Operator {
 
     const skills = loadSkills();
     this.emit(makeEvent('thought', `Starting browser operator for: ${prompt}. Skills: ${skills ? 'yes' : 'no'}.`));
+
+    if (!this.apiKey) {
+      this.emit(makeEvent('error', 'No xAI API key configured (XAI_API_KEY env). Browser will boot for observation but model calls will fail.'));
+    }
 
     // Seed any direct credentials passed at construction (now goes to DB via SecureStore)
     if (Object.keys(this._pendingCredentials).length > 0) {
@@ -842,12 +842,15 @@ let _instance: BrowserOperator | null = null;
 export function getBrowserOperator(config?: BrowserConfig): BrowserOperator {
   if (!_instance) {
     _instance = new BrowserOperator(config || {});
-  } else if (config?.model) {
+  } else if (config) {
     if (config.model) (_instance as any).config.model = config.model;
-
-    const effectiveApiKey = process.env.XAI_API_KEY || process.env.OPENAI_API_KEY;
-    if (!( _instance as any ).actionReasoner && effectiveApiKey) {
-      (_instance as any).initReasoners(effectiveApiKey, (_instance as any).config.model);
+    if (config.apiKey) {
+      (_instance as any).apiKey = config.apiKey;
+      (_instance as any).config.apiKey = config.apiKey; // for any legacy checks
+    }
+    const keyToUse = config.apiKey || (_instance as any).apiKey || process.env.XAI_API_KEY || process.env.OPENAI_API_KEY;
+    if (!( _instance as any ).actionReasoner && keyToUse) {
+      (_instance as any).initReasoners(keyToUse, (_instance as any).config.model);
     }
   }
   return _instance;

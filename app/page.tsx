@@ -187,6 +187,13 @@ function VisualBrowserWorkspace() {
 
   const [model, setModel] = usePersistedState<string>('aa-browser-model', '');
 
+  // Load key from previous persisted storage (if user had entered it before) so that the run can use it
+  // without showing any input UI. Supports old and new storage keys for compatibility.
+  // Primary source for new setups: XAI_API_KEY in .env.local (loaded server-side).
+  const [persistedApiKey] = usePersistedState<string>('aa-browser-xai-key', '');
+  const [oldPersistedApiKey] = usePersistedState<string>('aa-tars-xai-key', '');
+  const effectivePersistedKey = persistedApiKey || oldPersistedApiKey;
+
   const [inferenceOverrides, setInferenceOverrides] = useState<Record<string, any>>({});
 
   const [events, setEvents] = useState<AgentEvent[]>([]);
@@ -241,6 +248,7 @@ function VisualBrowserWorkspace() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ 
           task, 
+          apiKey: effectivePersistedKey || undefined,
           model: model || undefined,
           inferenceOverrides: Object.keys(inferenceOverrides).length ? inferenceOverrides : undefined
         }),
@@ -308,7 +316,7 @@ function VisualBrowserWorkspace() {
               {running && <button onClick={stopOperator} className="btn btn-ghost"><Square size={15} /> Stop</button>}
             </div>
             <div className="text-[10px] text-emerald-400 mt-2">
-              Visual-first: screenshot for page understanding + cheap data to reasoner. Exact prompt sent. Key from config/env.
+              Visual-first: screenshot for page understanding + cheap data to reasoner. Exact prompt sent. Key loaded from .env.local (XAI_API_KEY) or previous browser storage (no UI input shown).
             </div>
 
             <div className="mt-3 border-t border-white/10 pt-3">
