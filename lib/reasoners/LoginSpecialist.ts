@@ -32,7 +32,7 @@ export class LoginSpecialist implements PromptReasoner<SpecialistContext, LoginS
   }
 
   async decide(input: SpecialistContext, overrides: Record<string, any> = {}): Promise<LoginStrategy> {
-    const skills = input.skills || loadSkills('skills/browser'); // pulls in secure-login.md among others
+    const skills = input.skills || loadSkills('skills/visual-browser'); // pulls in secure-login.md among others
 
     const schema = {
       type: "object",

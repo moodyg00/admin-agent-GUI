@@ -98,7 +98,7 @@ export function makePlanEvent(plan: HighLevelPlan | string, extra?: Partial<Agen
 
 // Shared skill loader (used by operators today; now also by reasoners).
 // Looks for markdown under skills/<category>/*.md
-export function loadSkills(skillDir = 'skills/browser'): string {
+export function loadSkills(skillDir = 'skills/visual-browser'): string {
   // Dynamic import of fs to keep this usable in both server/client contexts if needed.
   // In practice this file is only required server-side (API routes + operator singletons).
   const fs = require('fs');

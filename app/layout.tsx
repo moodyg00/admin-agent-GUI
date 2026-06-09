@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "admin-agent",
-  description: "Unified GUI for agentic tools and admin workflows — merged from leading open source projects.",
+  title: "admin-agent control plane",
+  description: "Backend control plane for proto-2 business workflows, agents, and the visual browser operator.",
   icons: { icon: "/next.svg" },
 };
 

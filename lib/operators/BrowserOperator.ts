@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { chromium, Browser, Page } from 'playwright';
+import { chromium, BrowserContext, Page } from 'playwright';
 import { AgentEvent, ViewState, Operator, makeEvent } from './types';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -35,7 +35,7 @@ function archiveScreenshot(buffer: Buffer, metadata: any) {
   return { imgPath, metaPath };
 }
 
-function loadSkills(skillDir = 'skills/browser') {
+function loadSkills(skillDir = 'skills/visual-browser') {
   const dir = path.join(process.cwd(), skillDir);
   if (!fs.existsSync(dir)) return '';
   const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
@@ -100,8 +100,9 @@ export class BrowserOperator implements Operator {
   readonly id = 'browser-operator';
   readonly label = 'Visual Browser Agent (Playwright + xAI vision)';
 
-  private browser: Browser | null = null;
+  private context: BrowserContext | null = null;
   private page: Page | null = null;
+  private loginWindowOpen = false;
   private listeners: Array<(e: AgentEvent) => void> = [];
   private events: AgentEvent[] = [];
   private view: ViewState = { kind: 'browser', status: 'idle', title: 'Visual Browser' };
@@ -550,44 +551,61 @@ export class BrowserOperator implements Operator {
     this.inferenceOverrides = { ...this.inferenceOverrides, ...overrides };
   }
 
-  private async ensureBrowser(targetDomain?: string) {
-    if (this.browser && this.page) return;
+  private get profileDir() {
+    return path.join(process.cwd(), 'logs', 'chrome-profile');
+  }
 
-    this.browser = await chromium.launch({
-      headless: true, // Real control + screenshots. Change to false locally if you want to watch the OS browser window too.
+  private async ensureBrowser() {
+    if (this.context && this.page) return;
+    fs.mkdirSync(this.profileDir, { recursive: true });
+
+    this.context = await chromium.launchPersistentContext(this.profileDir, {
+      headless: true,
+      viewport: this.config.viewport,
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
 
-    const contextOptions: any = {
-      viewport: this.config.viewport,
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    };
-
-    // Load persisted session if available (cookies/localStorage for the domain).
-    // This allows staying logged in without re-entering credentials.
-    // Session files contain no raw passwords.
-    if (targetDomain) {
-      const sessionState = await this.secureStore.loadSession(targetDomain);
-      if (sessionState) {
-        contextOptions.storageState = sessionState;
-      }
-
-      // For sites behind basic auth directories
-      const httpCreds = await this.secureStore.getHttpCredentials(targetDomain);
-      if (httpCreds) {
-        contextOptions.httpCredentials = httpCreds;
-      }
-    }
-
-    const context = await this.browser.newContext(contextOptions);
-
-    this.page = await context.newPage();
-    // Basic stealth-ish
+    this.page = await this.context.newPage();
     await this.page.addInitScript(() => {
-      // @ts-ignore
       Object.defineProperty(navigator, 'webdriver', { get: () => false });
     });
   }
+
+  /** Open a headed (visible) Chrome window at the given URL so the user can log in manually.
+   *  Session is saved in the persistent profile and reused on all future runs. */
+  async openLoginBrowser(url: string): Promise<void> {
+    if (this.running) this.stop();
+    // Close existing context to free the profile lock
+    if (this.context) {
+      await this.context.close().catch(() => {});
+      this.context = null;
+      this.page = null;
+    }
+    fs.mkdirSync(this.profileDir, { recursive: true });
+    this.context = await chromium.launchPersistentContext(this.profileDir, {
+      headless: false,
+      viewport: this.config.viewport,
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+    this.page = await this.context.newPage();
+    await this.page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    this.loginWindowOpen = true;
+    this.emit(makeEvent('observation', `Login browser opened at ${url} — log in, then click Done.`));
+  }
+
+  async closeLoginBrowser(): Promise<void> {
+    if (this.context) {
+      await this.context.close().catch(() => {});
+      this.context = null;
+      this.page = null;
+    }
+    this.loginWindowOpen = false;
+    this.emit(makeEvent('observation', 'Login browser closed — session saved to profile.'));
+  }
+
+  getLoginWindowOpen(): boolean { return this.loginWindowOpen; }
 
   private async takeScreenshot(): Promise<{ dataUrl: string; buffer: Buffer }> {
     if (!this.page) throw new Error('No page');
@@ -828,9 +846,9 @@ export class BrowserOperator implements Operator {
 
   async close() {
     this.stop();
-    if (this.browser) {
-      await this.browser.close().catch(() => {});
-      this.browser = null;
+    if (this.context) {
+      await this.context.close().catch(() => {});
+      this.context = null;
       this.page = null;
     }
   }

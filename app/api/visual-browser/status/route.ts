@@ -20,6 +20,7 @@ export async function GET() {
     // Lightweight: send base64 only for the main current view + the last 6 captures
     return NextResponse.json({
       running: (op as any).running ?? false,
+      loginWindowOpen: op.getLoginWindowOpen(),
       view: {
         ...view,
         // The main live screenshot is already a data: URL in view.screenshot when present

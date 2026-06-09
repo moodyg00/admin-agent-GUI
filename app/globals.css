@@ -199,3 +199,65 @@ body {
   font-size: 10px;
   letter-spacing: 0.5px;
 }
+
+/* Workspace canvas */
+.workspace-canvas {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  background: #09090b;
+  background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.panel-shell {
+  display: flex;
+  flex-direction: column;
+  background: #111113;
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 10px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.06) inset;
+  overflow: hidden;
+  height: 100%;
+}
+
+.panel-titlebar {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  cursor: grab;
+  flex-shrink: 0;
+  user-select: none;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.02);
+}
+
+.panel-titlebar:active { cursor: grabbing; }
+
+.panel-body {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.panel-btn {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: #52525b;
+  transition: all 0.1s;
+}
+
+.panel-btn:hover {
+  background: rgba(255,255,255,0.07);
+  color: #fff;
+}
+
+.panel-btn-close:hover {
+  background: rgba(239,68,68,0.15);
+  color: #ef4444;
+}

@@ -37,7 +37,7 @@ export class BrowserActionReasoner implements PromptReasoner<SpecialistContext, 
     const { task, cheapObservation, screenshotDataUrl, step, skills: providedSkills, noProgressCount = 0 } = input;
 
     // Load browser skills if not already provided (reasoners can be called standalone too)
-    const skills = providedSkills || loadSkills('skills/browser');
+    const skills = providedSkills || loadSkills('skills/visual-browser');
 
     const actionSchema = {
       type: "object",
