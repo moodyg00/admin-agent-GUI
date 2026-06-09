@@ -1,13 +1,15 @@
-import { Bot, Video, Brain, Code2, Image as ImageIcon, FileText, BarChart3, Smartphone, Globe, Terminal } from 'lucide-react';
+import { Bot, Video, Brain, Image as ImageIcon, FileText, BarChart3, Smartphone, Globe, Terminal, Users, GitBranch, Activity } from 'lucide-react';
 
 export type WorkspaceId =
+  | 'team'
+  | 'workflow'
+  | 'langsmith'
   | 'visual-browser'
   | 'pure-browser'
   | 'video'
   | 'photography'
   | 'memory'
   | 'agents'
-  | 'workflows'
   | 'photos'
   | 'documents'
   | 'analytics'
@@ -27,13 +29,15 @@ export interface WorkspaceDef {
 export const DEFAULT_WORKSPACE_ID: WorkspaceId = 'visual-browser';
 
 export const WORKSPACES: WorkspaceDef[] = [
+  { id: 'team', label: 'Team', icon: Users, description: 'Executive meeting interface', source: 'core', status: 'built', defaultSize: { w: 1180, h: 760 } },
+  { id: 'workflow', label: 'Workflow', icon: GitBranch, description: 'Native workflow graph builder with LangGraph export', source: 'core', status: 'built', defaultSize: { w: 1180, h: 760 } },
+  { id: 'langsmith', label: 'LangSmith', icon: Activity, description: 'Trace dashboard and run analysis', source: 'langchain', status: 'built', defaultSize: { w: 1180, h: 760 } },
   { id: 'pure-browser', label: 'Pure Browser', icon: Terminal, description: 'Fast CDP browser — accessibility tree, no vision cost', source: 'core', status: 'built', defaultSize: { w: 900, h: 600 } },
   { id: 'visual-browser', label: 'Visual Browser', icon: Bot, description: 'Visual-first browser operator', source: 'core', status: 'built', defaultSize: { w: 1100, h: 700 } },
   { id: 'video', label: 'Video Production', icon: Video, description: 'Agentic video (Montage blueprint)', source: 'calesthio/OpenMontage', status: 'pending', defaultSize: { w: 640, h: 420 } },
   { id: 'photography', label: 'Photography', icon: ImageIcon, description: 'AI image & canvas (Invoke blueprint)', source: 'invoke-ai/InvokeAI', status: 'pending', defaultSize: { w: 640, h: 420 } },
   { id: 'memory', label: 'Agent Memory', icon: Brain, description: 'Layered agent memory (Tencent model)', source: 'TencentCloud/TencentDB-Agent-Memory', status: 'pending', defaultSize: { w: 560, h: 380 } },
   { id: 'agents', label: 'Agents', icon: Brain, description: 'Agent registry and configuration', source: '', status: 'pending', defaultSize: { w: 560, h: 380 } },
-  { id: 'workflows', label: 'Workflows', icon: Code2, description: 'Visual workflow editor (Flowise blueprint)', source: 'flowiseai/Flowise', status: 'pending', defaultSize: { w: 720, h: 500 } },
   { id: 'photos', label: 'Photos', icon: ImageIcon, description: 'Self-hosted photo library (Immich blueprint)', source: 'immich-app/immich', status: 'pending', defaultSize: { w: 640, h: 480 } },
   { id: 'documents', label: 'Documents', icon: FileText, description: 'PDF tools (Stirling-PDF blueprint)', source: 'Stirling-Tools/Stirling-PDF', status: 'pending', defaultSize: { w: 560, h: 380 } },
   { id: 'analytics', label: 'Analytics', icon: BarChart3, description: 'Custom analytics (Umami blueprint)', source: 'umami-software/umami', status: 'pending', defaultSize: { w: 720, h: 500 } },

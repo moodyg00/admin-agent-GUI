@@ -10,6 +10,31 @@ The backend UI will be comprised of workspaces with tools and panels and a blank
 - Handle sites that need human-style interaction when normal browser automation is not enough.
 - Keep credentials off the prompt and out of the UI, except for server-side storage and execution.
 
+---Team / Workflow / LangSmith workspaces---
+- `Team`: Teams-style executive room for CEO, CFO, CTO, CLO, COO and leadership layers.
+- `Workflow`: Dedicated workflow app panel (Flowise-based app embedded as the Workflow tool).
+- `LangSmith`: Dedicated trace panel for `https://smith.langchain.com` login and trace review.
+- LangGraph compile endpoint remains available at `POST /api/csuite/compile`.
+- LangSmith trace compatibility via standard LangChain env variables.
+
+### LangGraph + LangSmith setup
+
+Install runtime dependencies:
+
+```bash
+npm install @langchain/langgraph @langchain/core @langchain/openai langchain langsmith
+```
+
+Environment variables:
+
+```bash
+XAI_API_KEY=...
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=...
+LANGCHAIN_PROJECT=agentic-enterprise
+CSUITE_MODEL=grok-4.3
+```
+
 ## Direction
 - Keep naming aligned to reusable workspaces, operators, and workflows instead of one-off app labels.
 - Prefer shared catalogs and components over hard-coded UI branches in the page shell.

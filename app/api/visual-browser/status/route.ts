@@ -21,11 +21,12 @@ export async function GET() {
     return NextResponse.json({
       running: (op as any).running ?? false,
       loginWindowOpen: op.getLoginWindowOpen(),
+      credentialRequired: op.getCredentialRequired(),
+      startupError: op.getStartupError(),
       view: {
         ...view,
-        // The main live screenshot is already a data: URL in view.screenshot when present
       },
-      events: events.slice(-60), // recent only
+      events: events.slice(-60),
       capturedScreenshots: caps.slice(-8),
       finalAnswer: final,
       connectInfo: op.connectInfo,

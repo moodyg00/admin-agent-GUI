@@ -4,6 +4,9 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { WorkspacePanel } from './WorkspacePanel';
 import { BrowserPanel } from './panels/BrowserPanel';
 import { PureBrowserPanel } from './panels/PureBrowserPanel';
+import { TeamPanel } from './panels/TeamPanel';
+import { WorkflowPanel } from './panels/WorkflowPanel';
+import { LangSmithPanel } from './panels/LangSmithPanel';
 import { PlaceholderPanel } from './panels/PlaceholderPanel';
 import { PanelInstance, defaultPanelId } from '../lib/panels';
 import { getWorkspace, WorkspaceId } from '../lib/workspaces';
@@ -145,6 +148,9 @@ export function WorkspaceCanvas({ toggleTarget, onToggleConsumed }: WorkspaceCan
 }
 
 function PanelContent({ workspaceId }: { workspaceId: WorkspaceId }) {
+  if (workspaceId === 'team') return <TeamPanel />;
+  if (workspaceId === 'workflow') return <WorkflowPanel />;
+  if (workspaceId === 'langsmith') return <LangSmithPanel />;
   if (workspaceId === 'pure-browser') return <PureBrowserPanel />;
   if (workspaceId === 'visual-browser') return <BrowserPanel />;
   const workspace = getWorkspace(workspaceId);

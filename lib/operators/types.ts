@@ -25,7 +25,7 @@ export interface ViewState {
   content?: string; // textual representation or description for mock rendering
   screenshot?: string; // latest full screenshot data url if available
   highlight?: { x: number; y: number; w?: number; h?: number }; // action highlight rect (relative 0-1 or px)
-  status: 'idle' | 'thinking' | 'acting' | 'observing' | 'error';
+  status: 'idle' | 'thinking' | 'acting' | 'observing' | 'error' | 'waiting';
 }
 
 export interface Operator {

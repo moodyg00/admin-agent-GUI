@@ -1,6 +1,7 @@
 import 'server-only';
 
-import { chromium, BrowserContext, Page } from 'playwright';
+import { chromium, Browser, BrowserContext, Page } from 'playwright';
+import { spawn, ChildProcess } from 'child_process';
 import { AgentEvent, ViewState, Operator, makeEvent } from './types';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -137,6 +138,14 @@ export class BrowserOperator implements Operator {
   private secureStore: SecureStore;
   private _pendingCredentials: Record<string, { username: string; password: string }> = {};
 
+  // CDP / process management
+  private browser: Browser | null = null;
+  private ownedProcess: ChildProcess | null = null;
+  // Set when the task needs credentials not in SecureStore; the run loop pauses until UI provides them.
+  private credentialRequired: { domain: string; reason: 'missing' | 'invalid' } | null = null;
+  // Last browser startup error — surfaced to the UI via status API
+  private startupError: string | null = null;
+
   // The thin driver owns: browser lifecycle, cheap obs, change-gated archiving + vision, secure execution, event stream, basic progress guard.
   // The policy lives in the reasoner(s) below.
   private actionReasoner: BrowserActionReasoner | null = null;
@@ -207,6 +216,9 @@ export class BrowserOperator implements Operator {
 
   getCapturedScreenshots() { return [...this.capturedScreenshots]; }
   getFinalAnswer() { return this.finalAnswer; }
+  getCredentialRequired() { return this.credentialRequired; }
+  clearCredentialRequired() { this.credentialRequired = null; }
+  getStartupError() { return this.startupError; }
 
   private emit(event: AgentEvent) {
     this.events.push(event);
@@ -249,6 +261,11 @@ export class BrowserOperator implements Operator {
       this._pendingCredentials = {};
     }
 
+    // If the login browser is still open, close it first (saves the session to the profile).
+    if (this.loginWindowOpen) {
+      await this.closeLoginBrowser();
+    }
+
     try {
       await this.ensureBrowser();
 
@@ -259,13 +276,32 @@ export class BrowserOperator implements Operator {
       this.emit(makeEvent('observation', `Neutral bootstrap at ${initialUrl}. Reasoner decides first action for the exact prompt.`));
 
       await this.page!.goto(initialUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
-      await this.page!.setViewportSize(this.config.viewport!);
+      await this.page!.setViewportSize(this.config.viewport!).catch(() => {});
       await this.delay(400);
 
       const maxSteps = 30;
       let step = 0;
 
       while (step < maxSteps && this.running && !this.abortController.signal.aborted) {
+        // Pause if the UI needs to supply credentials
+        if (this.credentialRequired) {
+          this.updateView({ status: 'waiting' });
+          this.emit(makeEvent('observation', `Waiting for credentials for '${this.credentialRequired.domain}' — enter them in the popup.`));
+          let waited = 0;
+          while (this.credentialRequired && this.running && !this.abortController.signal.aborted && waited < 120_000) {
+            await this.delay(1500);
+            waited += 1500;
+          }
+          if (this.credentialRequired) {
+            this.finalAnswer = `Timed out waiting for credentials for '${this.credentialRequired.domain}'. Re-run the task after entering them.`;
+            this.emit(makeEvent('result', this.finalAnswer));
+            this.updateView({ status: 'idle' });
+            break;
+          }
+          this.emit(makeEvent('observation', 'Credentials received. Resuming task.'));
+          this.noProgressCount = 0;
+        }
+
         step++;
         this.updateView({ status: 'thinking' });
 
@@ -555,44 +591,210 @@ export class BrowserOperator implements Operator {
     return path.join(process.cwd(), 'logs', 'chrome-profile');
   }
 
-  private async ensureBrowser() {
-    if (this.context && this.page) return;
-    fs.mkdirSync(this.profileDir, { recursive: true });
-
-    this.context = await chromium.launchPersistentContext(this.profileDir, {
-      headless: true,
-      viewport: this.config.viewport,
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-
-    this.page = await this.context.newPage();
-    await this.page.addInitScript(() => {
-      Object.defineProperty(navigator, 'webdriver', { get: () => false });
-    });
+  /** Resolve the user's real Chrome/Chromium user-data directory (not the agent profile). */
+  private get realChromeProfileDir(): string | null {
+    // Explicit override wins
+    const envPath = process.env.CHROME_USER_DATA_DIR;
+    if (envPath && fs.existsSync(envPath)) return envPath;
+    // Auto-detect macOS paths
+    const home = process.env.HOME || '';
+    for (const p of [
+      `${home}/Library/Application Support/Google/Chrome`,
+      `${home}/Library/Application Support/Chromium`,
+    ]) {
+      if (fs.existsSync(p)) return p;
+    }
+    return null;
   }
 
-  /** Open a headed (visible) Chrome window at the given URL so the user can log in manually.
-   *  Session is saved in the persistent profile and reused on all future runs. */
-  async openLoginBrowser(url: string): Promise<void> {
-    if (this.running) this.stop();
-    // Close existing context to free the profile lock
+  /** True if Chrome has the profile directory locked (i.e. Chrome is currently running with it). */
+  private isChromeProfileLocked(profileDir: string): boolean {
+    return fs.existsSync(path.join(profileDir, 'SingletonLock'));
+  }
+
+  private async ensureBrowser() {
+    if (this.context && this.page && !this.page.isClosed()) return;
+    // Stale context — tear down before relaunching.
     if (this.context) {
       await this.context.close().catch(() => {});
       this.context = null;
       this.page = null;
     }
-    fs.mkdirSync(this.profileDir, { recursive: true });
-    this.context = await chromium.launchPersistentContext(this.profileDir, {
-      headless: false,
-      viewport: this.config.viewport,
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    if (this.browser) {
+      await this.browser.close().catch(() => {});
+      this.browser = null;
+    }
+
+    const CDP_PORT = 9222;
+    const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+    const agentProfileDir = this.profileDir;
+    fs.mkdirSync(agentProfileDir, { recursive: true });
+    this.startupError = null;
+
+    // ── Path 1: CDP ─────────────────────────────────────────────────────────
+    // Attach to an already-running Chrome that has --remote-debugging-port=9222.
+    // This is the best case — we get the user's full live sessions.
+    try {
+      this.browser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`, { timeout: 2000 });
+      const ctxs = this.browser.contexts();
+      this.context = ctxs.length > 0 ? ctxs[0] : await this.browser.newContext();
+      this.emit(makeEvent('observation', 'CDP: attached to your running Chrome — using your existing logged-in sessions.'));
+    } catch {
+      this.browser = null;
+    }
+
+    // ── Path 2: Real Chrome profile ──────────────────────────────────────────
+    // Try to launch headless Chrome with the user's actual profile so sessions
+    // (Google, GitHub, etc.) are already present without any manual login step.
+    if (!this.context && fs.existsSync(chromePath)) {
+      const realProfile = this.realChromeProfileDir;
+      if (realProfile) {
+        if (this.isChromeProfileLocked(realProfile)) {
+          // Chrome is running but without --remote-debugging-port. Explain and fall through.
+          const msg =
+            'Chrome is open but not running with --remote-debugging-port=9222. ' +
+            'To use your logged-in profile automatically, quit Chrome then re-run — ' +
+            'the browser will launch headlessly with your profile. ' +
+            'Or restart Chrome with: open -na "Google Chrome" --args --remote-debugging-port=9222';
+          this.startupError = msg;
+          this.emit(makeEvent('error', msg));
+        } else {
+          // Chrome is not running — launch it headless with the real profile.
+          try {
+            const proc = spawn(chromePath, [
+              `--user-data-dir=${realProfile}`,
+              `--remote-debugging-port=${CDP_PORT}`,
+              '--headless=new',
+              '--no-first-run',
+              '--no-default-browser-check',
+              '--disable-default-apps',
+              '--no-sandbox',
+            ], { detached: true, stdio: 'ignore' });
+            proc.unref();
+            this.ownedProcess = proc;
+            await this.delay(3000);
+
+            this.browser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`, { timeout: 8000 });
+            const ctxs = this.browser.contexts();
+            this.context = ctxs.length > 0 ? ctxs[0] : await this.browser.newContext();
+            this.emit(makeEvent('observation', `Chrome launched headlessly with your real profile — already logged in to your accounts.`));
+          } catch (e: any) {
+            this.browser = null;
+            this.ownedProcess = null;
+            const msg = `Failed to launch Chrome with your real profile: ${e?.message || e}`;
+            this.startupError = msg;
+            this.emit(makeEvent('error', msg));
+          }
+        }
+      }
+    }
+
+    // ── Path 3: Agent profile with real Chrome binary ────────────────────────
+    // Last resort before bundled Chromium: use real Chrome with the agent-owned profile.
+    if (!this.context && fs.existsSync(chromePath)) {
+      try {
+        const proc = spawn(chromePath, [
+          `--user-data-dir=${agentProfileDir}`,
+          `--remote-debugging-port=${CDP_PORT}`,
+          '--headless=new',
+          '--no-first-run',
+          '--no-default-browser-check',
+          '--disable-default-apps',
+          '--no-sandbox',
+        ], { detached: true, stdio: 'ignore' });
+        proc.unref();
+        this.ownedProcess = proc;
+        await this.delay(2500);
+
+        this.browser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`, { timeout: 6000 });
+        const ctxs = this.browser.contexts();
+        this.context = ctxs.length > 0 ? ctxs[0] : await this.browser.newContext();
+        if (!this.startupError) {
+          this.startupError = 'Using agent browser profile — not logged in to your accounts. Use the Login tab to authenticate once, then sessions will persist.';
+        }
+        this.emit(makeEvent('observation', 'Chrome launched with agent profile (fallback — not logged in to your accounts).'));
+      } catch (e: any) {
+        this.browser = null;
+        this.ownedProcess = null;
+        this.emit(makeEvent('error', `Agent profile Chrome launch failed: ${e?.message || e}`));
+      }
+    }
+
+    // ── Path 4: Playwright bundled Chromium (ultimate fallback) ──────────────
+    if (!this.context) {
+      try {
+        this.context = await chromium.launchPersistentContext(agentProfileDir, {
+          headless: true,
+          viewport: this.config.viewport,
+          userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        });
+        if (!this.startupError) {
+          this.startupError = 'Using Playwright Chromium fallback — not logged in to your accounts. Use the Login tab to authenticate once.';
+        }
+        this.emit(makeEvent('observation', 'Playwright bundled Chromium (ultimate fallback — not logged in to your accounts).'));
+      } catch (e: any) {
+        const msg = `All browser launch methods failed: ${e?.message || e}`;
+        this.startupError = msg;
+        this.emit(makeEvent('error', msg));
+        throw new Error(msg);
+      }
+    }
+
+    const pages = this.context!.pages();
+    this.page = pages.length > 0 ? pages[0] : await this.context!.newPage();
+    await this.page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
     });
-    this.page = await this.context.newPage();
-    await this.page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    this.loginWindowOpen = true;
-    this.emit(makeEvent('observation', `Login browser opened at ${url} — log in, then click Done.`));
+  }
+
+  /** Open a headed Chrome window at the given URL so the user can log in.
+   *  Uses real Chrome with the agent profile — supports Google sign-in and saves sessions. */
+  async openLoginBrowser(url: string): Promise<void> {
+    if (this.running) this.stop();
+    // Release any headless context/process first to free the profile lock
+    if (this.context) {
+      await this.context.close().catch(() => {});
+      this.context = null;
+      this.page = null;
+    }
+    if (this.browser) {
+      await this.browser.close().catch(() => {});
+      this.browser = null;
+    }
+    if (this.ownedProcess) {
+      try { this.ownedProcess.kill(); } catch {}
+      this.ownedProcess = null;
+    }
+
+    const profileDir = this.profileDir;
+    fs.mkdirSync(profileDir, { recursive: true });
+    const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+
+    if (fs.existsSync(chromePath)) {
+      // Open real Chrome in headed mode — sign in with Google or site credentials
+      const proc = spawn(chromePath, [
+        `--user-data-dir=${profileDir}`,
+        '--no-first-run',
+        '--no-default-browser-check',
+        url,
+      ], { detached: true, stdio: 'ignore' });
+      proc.unref();
+      this.loginWindowOpen = true;
+      this.emit(makeEvent('observation', `Login browser opened at ${url}. Prefer "Sign in with Google" when available, then click Done.`));
+    } else {
+      // Fallback: Playwright-managed headed browser
+      this.context = await chromium.launchPersistentContext(profileDir, {
+        headless: false,
+        viewport: this.config.viewport,
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+      this.page = await this.context.newPage();
+      await this.page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      this.loginWindowOpen = true;
+      this.emit(makeEvent('observation', `Login browser opened at ${url} — log in, then click Done.`));
+    }
   }
 
   async closeLoginBrowser(): Promise<void> {
@@ -600,6 +802,14 @@ export class BrowserOperator implements Operator {
       await this.context.close().catch(() => {});
       this.context = null;
       this.page = null;
+    }
+    if (this.browser) {
+      await this.browser.close().catch(() => {});
+      this.browser = null;
+    }
+    if (this.ownedProcess) {
+      try { this.ownedProcess.kill(); } catch {}
+      this.ownedProcess = null;
     }
     this.loginWindowOpen = false;
     this.emit(makeEvent('observation', 'Login browser closed — session saved to profile.'));
@@ -749,8 +959,8 @@ export class BrowserOperator implements Operator {
               for (const p of authPrefixes) {
                 if (displayDomain.startsWith(p)) { displayDomain = displayDomain.slice(p.length); break; }
               }
-              const failureNote = `Secure marker for ${domain} could not be resolved - no credentials in store for ${displayDomain}. High-level instruction was not injected. To fix: in the Visual Browser UI open Secure Logins, fill Domain + Username + Password for '${displayDomain}', click "Save for domain", then re-run the task.`;
-              this.emit(makeEvent('observation', failureNote));
+              this.credentialRequired = { domain: displayDomain, reason: 'missing' };
+              this.emit(makeEvent('observation', `No credentials found for '${displayDomain}' — enter them in the popup to continue.`));
               valueToType = '';
             }
           }
@@ -850,6 +1060,14 @@ export class BrowserOperator implements Operator {
       await this.context.close().catch(() => {});
       this.context = null;
       this.page = null;
+    }
+    if (this.browser) {
+      await this.browser.close().catch(() => {});
+      this.browser = null;
+    }
+    if (this.ownedProcess) {
+      try { this.ownedProcess.kill(); } catch {}
+      this.ownedProcess = null;
     }
   }
 }

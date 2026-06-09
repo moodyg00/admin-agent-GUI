@@ -29,10 +29,19 @@ export async function POST(req: NextRequest) {
       console.warn('[secure/credentials] Prisma connect warning:', connectErr);
     }
 
-    const store = getSecureStore(); // uses server default / env
+    const store = getSecureStore();
     await store.setCredential(domain, { username, password });
 
-    return NextResponse.json({ ok: true, message: `Credentials for ${domain} saved securely (encrypted in Postgres DB).` });
+    // If a task is currently paused waiting for these credentials, unblock it.
+    try {
+      const { getBrowserOperator } = await import('@/lib/operators/BrowserOperator');
+      const op = getBrowserOperator();
+      if (op.getCredentialRequired()?.domain) {
+        op.clearCredentialRequired();
+      }
+    } catch { /* operator may not be initialized */ }
+
+    return NextResponse.json({ ok: true, message: `Credentials for ${domain} saved.` });
   } catch (e: any) {
     console.error('[secure/credentials] Save failed:', e);
     return NextResponse.json({ error: e.message || 'Failed to save credentials' }, { status: 500 });

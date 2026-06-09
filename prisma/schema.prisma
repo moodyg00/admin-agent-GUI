@@ -26,3 +26,42 @@ model SessionState {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// ─── Workflow Builder ──────────────────────────────────────────────────────────
+
+model Workflow {
+  id              String            @id @default(cuid())
+  name            String
+  description     String            @default("")
+  kind            String            @default("standard") // 'standard' | 'langgraph'
+  currentVersion  Int               @default(1)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  versions        WorkflowVersion[]
+  exports         WorkflowExport[]
+}
+
+model WorkflowVersion {
+  id         String   @id @default(cuid())
+  workflowId String
+  version    Int
+  definition Json     // Full WorkflowDefinition snapshot
+  createdAt  DateTime @default(now())
+
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, version])
+  @@index([workflowId])
+}
+
+model WorkflowExport {
+  id           String   @id @default(cuid())
+  workflowId   String
+  version      Int
+  artifacts    Json     // WorkflowExportArtifacts
+  createdAt    DateTime @default(now())
+
+  workflow     Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([workflowId])
+}

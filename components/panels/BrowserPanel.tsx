@@ -16,6 +16,8 @@ type BrowserStatusResponse = {
   finalAnswer?: string | null;
   running?: boolean;
   loginWindowOpen?: boolean;
+  credentialRequired?: { domain: string; reason: 'missing' | 'invalid' } | null;
+  startupError?: string | null;
 };
 
 const usePersistedState = <T,>(key: string, initial: T) => {
@@ -47,6 +49,13 @@ export function BrowserPanel() {
   const [sidebarTab, setSidebarTab] = useState<'events' | 'login'>('events');
   const [loginUrl, setLoginUrl] = useState('https://');
   const [loginWindowOpen, setLoginWindowOpen] = useState(false);
+  const [startupError, setStartupError] = useState<string | null>(null);
+
+  // Credential prompt state
+  const [credentialRequired, setCredentialRequired] = useState<{ domain: string; reason: 'missing' | 'invalid' } | null>(null);
+  const [credUsername, setCredUsername] = useState('');
+  const [credPassword, setCredPassword] = useState('');
+  const [credSaving, setCredSaving] = useState(false);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -61,6 +70,10 @@ export function BrowserPanel() {
           if (data.finalAnswer) setFinalAnswer(data.finalAnswer);
           if (data.running === false) setRunning(false);
           if (typeof data.loginWindowOpen === 'boolean') setLoginWindowOpen(data.loginWindowOpen);
+          if (data.credentialRequired !== undefined) {
+            setCredentialRequired(data.credentialRequired ?? null);
+          }
+          if (data.startupError !== undefined) setStartupError(data.startupError ?? null);
         }
       } catch { /* hiccup */ }
       timer = setTimeout(poll, 1200);
@@ -100,6 +113,30 @@ export function BrowserPanel() {
     toast.info('Stop requested');
   };
 
+  const saveCredentials = async () => {
+    if (!credentialRequired || !credUsername.trim() || !credPassword.trim()) {
+      toast.error('Enter both username/email and password');
+      return;
+    }
+    setCredSaving(true);
+    try {
+      const res = await fetch('/api/secure/credentials', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ domain: credentialRequired.domain, username: credUsername, password: credPassword }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to save');
+      toast.success(`Credentials saved for ${credentialRequired.domain}`);
+      setCredentialRequired(null);
+      setCredUsername('');
+      setCredPassword('');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save credentials');
+    } finally {
+      setCredSaving(false);
+    }
+  };
+
   const openLoginBrowser = async () => {
     try {
       const res = await fetch('/api/visual-browser/login', {
@@ -125,6 +162,13 @@ export function BrowserPanel() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#09090b]">
+      {startupError && (
+        <div className="flex-shrink-0 flex items-start gap-2 px-3 py-2.5 bg-amber-950/60 border-b border-amber-800/50 text-amber-300 text-xs leading-relaxed">
+          <span className="flex-shrink-0 mt-0.5 text-amber-400">⚠</span>
+          <span className="flex-1">{startupError}</span>
+          <button onClick={() => setStartupError(null)} className="flex-shrink-0 text-amber-600 hover:text-amber-300 ml-1">✕</button>
+        </div>
+      )}
       <div className="flex-1 min-h-0 grid grid-cols-[1fr_260px]">
         <div className="flex flex-col min-h-0 overflow-hidden border-r border-white/6">
           <div className="flex-1 min-h-0 overflow-hidden">
@@ -252,6 +296,62 @@ export function BrowserPanel() {
             alt="Screenshot"
             onClick={e => e.stopPropagation()}
           />
+        </div>
+      )}
+
+      {credentialRequired && (
+        <div className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-[#111113] border border-white/10 rounded-xl w-full max-w-sm shadow-2xl">
+            <div className="px-5 py-4 border-b border-white/8">
+              <div className="text-sm font-medium text-zinc-100">Credentials needed</div>
+              <div className="text-xs text-zinc-500 mt-0.5">
+                The agent needs a login for <span className="text-zinc-300 font-mono">{credentialRequired.domain}</span> to continue.
+              </div>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div>
+                <label className="text-[10px] uppercase tracking-widest text-zinc-600 block mb-1">Username / Email</label>
+                <input
+                  autoFocus
+                  value={credUsername}
+                  onChange={e => setCredUsername(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && saveCredentials()}
+                  className="input w-full text-sm"
+                  placeholder="you@example.com"
+                  type="email"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-widest text-zinc-600 block mb-1">Password</label>
+                <input
+                  value={credPassword}
+                  onChange={e => setCredPassword(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && saveCredentials()}
+                  className="input w-full text-sm"
+                  placeholder="••••••••"
+                  type="password"
+                />
+              </div>
+              <p className="text-[10px] text-zinc-600 leading-relaxed">
+                Saved encrypted on-server only. Never sent to the AI model.
+              </p>
+            </div>
+            <div className="px-5 pb-4 flex gap-2">
+              <button
+                onClick={() => { setCredentialRequired(null); setRunning(false); }}
+                className="btn btn-ghost flex-1 text-xs"
+              >
+                Cancel task
+              </button>
+              <button
+                onClick={saveCredentials}
+                disabled={credSaving || !credUsername.trim() || !credPassword.trim()}
+                className="btn btn-primary flex-1 text-xs"
+              >
+                {credSaving ? 'Saving…' : 'Save & Continue'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

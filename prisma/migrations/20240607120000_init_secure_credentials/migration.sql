@@ -1,4 +1,3 @@
-◇ injected env (4) from .env.local // tip: ⌘ suppress logs { quiet: true }
 -- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "adminagent";
 
