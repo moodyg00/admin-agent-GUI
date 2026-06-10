@@ -46,3 +46,14 @@ export async function POST() {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
+
+export async function DELETE() {
+  // Reset browser context so next run reconnects (e.g. to a real Chrome on CDP port 9222)
+  try {
+    const op = getBrowserOperator();
+    await op.resetBrowser();
+    return NextResponse.json({ ok: true, reset: true });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}

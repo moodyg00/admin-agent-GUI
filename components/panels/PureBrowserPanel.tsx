@@ -8,7 +8,7 @@ type SR = { running?: boolean; lines?: string[] };
 
 export function PureBrowserPanel() {
   const [task, setTask] = useState(
-    'go to duckduckgo.com and search for OpenAI'
+    'go to google.com and search for OpenAI'
   );
   const [url, setUrl] = useState("");
   const [running, setRunning] = useState(false);

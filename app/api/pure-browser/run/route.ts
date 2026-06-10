@@ -12,6 +12,6 @@ export async function POST(req: NextRequest) {
       { error: 'task is required' },
       { status: 400 },
     );
-  startPureBrowser(task, url || 'https://duckduckgo.com');
+  startPureBrowser(task, url || 'https://www.google.com');
   return NextResponse.json({ ok: true });
 }

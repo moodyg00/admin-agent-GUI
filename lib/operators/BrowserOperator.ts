@@ -270,9 +270,9 @@ export class BrowserOperator implements Operator {
       await this.ensureBrowser();
 
       // Neutral bootstrap. The customized agent (BrowserActionReasoner + skills + structured outputs)
-      // decides every action, including the first goto if the task requires leaving DDG.
+      // decides every action, including the first goto if the task requires leaving Google.
       // No task-specific or site-specific forcing in the thin driver.
-      const initialUrl = 'https://duckduckgo.com';
+      const initialUrl = 'https://www.google.com';
       this.emit(makeEvent('observation', `Neutral bootstrap at ${initialUrl}. Reasoner decides first action for the exact prompt.`));
 
       await this.page!.goto(initialUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
@@ -587,8 +587,42 @@ export class BrowserOperator implements Operator {
     this.inferenceOverrides = { ...this.inferenceOverrides, ...overrides };
   }
 
+  /** Force-close the current browser context so the next runTask() reconnects fresh (e.g. to a newly-launched real Chrome on CDP). */
+  async resetBrowser(): Promise<void> {
+    this.stop();
+    if (this.context) {
+      await this.context.close().catch(() => {});
+      this.context = null;
+      this.page = null;
+    }
+    if (this.browser) {
+      await this.browser.close().catch(() => {});
+      this.browser = null;
+    }
+    if (this.ownedProcess) {
+      try { this.ownedProcess.kill(); } catch {}
+      this.ownedProcess = null;
+    }
+    this.startupError = null;
+    this.loginWindowOpen = false;
+    this.emit(makeEvent('observation', 'Browser context reset — will reconnect on next run.'));
+  }
+
   private get profileDir() {
     return path.join(process.cwd(), 'logs', 'chrome-profile');
+  }
+
+  private async connectOverCdp(port: number, timeout: number): Promise<Browser> {
+    const urls = [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
+    let lastError: any;
+    for (const url of urls) {
+      try {
+        return await chromium.connectOverCDP(url, { timeout });
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    throw lastError;
   }
 
   /** Resolve the user's real Chrome/Chromium user-data directory (not the agent profile). */
@@ -632,10 +666,10 @@ export class BrowserOperator implements Operator {
     this.startupError = null;
 
     // ── Path 1: CDP ─────────────────────────────────────────────────────────
-    // Attach to an already-running Chrome that has --remote-debugging-port=9222.
-    // This is the best case — we get the user's full live sessions.
+    // Attach to an already-running Chrome that has --remote-debugging-port=9222
+    // on a non-default profile dir (Chrome security blocks CDP on its default dir).
     try {
-      this.browser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`, { timeout: 2000 });
+      this.browser = await this.connectOverCdp(CDP_PORT, 2000);
       const ctxs = this.browser.contexts();
       this.context = ctxs.length > 0 ? ctxs[0] : await this.browser.newContext();
       this.emit(makeEvent('observation', 'CDP: attached to your running Chrome — using your existing logged-in sessions.'));
@@ -643,54 +677,9 @@ export class BrowserOperator implements Operator {
       this.browser = null;
     }
 
-    // ── Path 2: Real Chrome profile ──────────────────────────────────────────
-    // Try to launch headless Chrome with the user's actual profile so sessions
-    // (Google, GitHub, etc.) are already present without any manual login step.
-    if (!this.context && fs.existsSync(chromePath)) {
-      const realProfile = this.realChromeProfileDir;
-      if (realProfile) {
-        if (this.isChromeProfileLocked(realProfile)) {
-          // Chrome is running but without --remote-debugging-port. Explain and fall through.
-          const msg =
-            'Chrome is open but not running with --remote-debugging-port=9222. ' +
-            'To use your logged-in profile automatically, quit Chrome then re-run — ' +
-            'the browser will launch headlessly with your profile. ' +
-            'Or restart Chrome with: open -na "Google Chrome" --args --remote-debugging-port=9222';
-          this.startupError = msg;
-          this.emit(makeEvent('error', msg));
-        } else {
-          // Chrome is not running — launch it headless with the real profile.
-          try {
-            const proc = spawn(chromePath, [
-              `--user-data-dir=${realProfile}`,
-              `--remote-debugging-port=${CDP_PORT}`,
-              '--headless=new',
-              '--no-first-run',
-              '--no-default-browser-check',
-              '--disable-default-apps',
-              '--no-sandbox',
-            ], { detached: true, stdio: 'ignore' });
-            proc.unref();
-            this.ownedProcess = proc;
-            await this.delay(3000);
-
-            this.browser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`, { timeout: 8000 });
-            const ctxs = this.browser.contexts();
-            this.context = ctxs.length > 0 ? ctxs[0] : await this.browser.newContext();
-            this.emit(makeEvent('observation', `Chrome launched headlessly with your real profile — already logged in to your accounts.`));
-          } catch (e: any) {
-            this.browser = null;
-            this.ownedProcess = null;
-            const msg = `Failed to launch Chrome with your real profile: ${e?.message || e}`;
-            this.startupError = msg;
-            this.emit(makeEvent('error', msg));
-          }
-        }
-      }
-    }
-
-    // ── Path 3: Agent profile with real Chrome binary ────────────────────────
-    // Last resort before bundled Chromium: use real Chrome with the agent-owned profile.
+    // ── Path 2: Agent profile with real Chrome binary ────────────────────────
+    // Launch headless Chrome with the agent-owned profile dir.
+    // Sessions logged in via the Login tab will persist here.
     if (!this.context && fs.existsSync(chromePath)) {
       try {
         const proc = spawn(chromePath, [
@@ -706,13 +695,11 @@ export class BrowserOperator implements Operator {
         this.ownedProcess = proc;
         await this.delay(2500);
 
-        this.browser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`, { timeout: 6000 });
+        this.browser = await this.connectOverCdp(CDP_PORT, 6000);
         const ctxs = this.browser.contexts();
         this.context = ctxs.length > 0 ? ctxs[0] : await this.browser.newContext();
-        if (!this.startupError) {
-          this.startupError = 'Using agent browser profile — not logged in to your accounts. Use the Login tab to authenticate once, then sessions will persist.';
-        }
-        this.emit(makeEvent('observation', 'Chrome launched with agent profile (fallback — not logged in to your accounts).'));
+        this.startupError = 'Using agent browser profile. Use the Login tab to sign in — sessions persist across runs.';
+        this.emit(makeEvent('observation', 'Chrome launched with agent profile. Use Login tab to authenticate once; sessions persist.'));
       } catch (e: any) {
         this.browser = null;
         this.ownedProcess = null;
@@ -720,7 +707,7 @@ export class BrowserOperator implements Operator {
       }
     }
 
-    // ── Path 4: Playwright bundled Chromium (ultimate fallback) ──────────────
+    // ── Path 3: Playwright bundled Chromium (ultimate fallback) ──────────────
     if (!this.context) {
       try {
         this.context = await chromium.launchPersistentContext(agentProfileDir, {
@@ -730,9 +717,9 @@ export class BrowserOperator implements Operator {
           args: ['--no-sandbox', '--disable-setuid-sandbox'],
         });
         if (!this.startupError) {
-          this.startupError = 'Using Playwright Chromium fallback — not logged in to your accounts. Use the Login tab to authenticate once.';
+          this.startupError = 'Using Playwright Chromium fallback. Use the Login tab to authenticate once.';
         }
-        this.emit(makeEvent('observation', 'Playwright bundled Chromium (ultimate fallback — not logged in to your accounts).'));
+        this.emit(makeEvent('observation', 'Playwright bundled Chromium (fallback). Use Login tab to authenticate.'));
       } catch (e: any) {
         const msg = `All browser launch methods failed: ${e?.message || e}`;
         this.startupError = msg;
